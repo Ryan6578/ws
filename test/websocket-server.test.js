@@ -1417,5 +1417,72 @@ describe('WebSocketServer', () => {
         ws.close();
       });
     });
+
+    it('shares deflate streams between connections', (done) => {
+      let stream;
+
+      const wss = new WebSocket.Server(
+        {
+          perMessageDeflate: { serverNoContextTakeover: true, threshold: 0 },
+          port: 0
+        },
+        () => {
+          const url = `ws://localhost:${wss.address().port}`;
+          const ws1 = new WebSocket(url);
+
+          ws1.on('message', () => {
+            const ws2 = new WebSocket(url);
+
+            ws2.on('message', () => {
+              ws1.close();
+              ws2.close();
+            });
+          });
+        }
+      );
+
+      wss.on('connection', (ws) => {
+        ws.send('foo', (err) => {
+          if (err) return done(err);
+
+          const streams = wss._deflatePool.streams.get(15);
+
+          assert.strictEqual(
+            ws._extensions['permessage-deflate']._deflate,
+            null
+          );
+          assert.strictEqual(streams.length, 1);
+
+          if (stream === undefined) {
+            stream = streams[0];
+          } else {
+            assert.strictEqual(streams[0], stream);
+            wss.close();
+          }
+        });
+      });
+
+      wss.on('close', () => {
+        assert.strictEqual(stream.destroyed, true);
+        done();
+      });
+    });
+
+    it('sizes the deflate pool after the `concurrencyLimit` option', () => {
+      const sizes = [undefined, 2, 50, 0, Infinity].map((concurrencyLimit) => {
+        const wss = new WebSocket.Server({
+          noServer: true,
+          perMessageDeflate: { concurrencyLimit }
+        });
+
+        return wss._deflatePool.size;
+      });
+
+      assert.deepStrictEqual(sizes, [10, 2, 10, 10, 10]);
+      assert.strictEqual(
+        new WebSocket.Server({ noServer: true })._deflatePool,
+        null
+      );
+    });
   });
 });

@@ -187,6 +187,13 @@ is used. When sending a fragmented message, the length of the first fragment is
 compared to the threshold. This determines if compression is used for the entire
 message.
 
+When server context takeover is disabled, the server shares deflate streams
+between connections: a connection takes a stream when it starts sending a
+compressed message and returns it after the last fragment. The server keeps up
+to `concurrencyLimit` idle streams (at most 10) for each window size, and closes
+them when it closes. The streams are created with the `zlibDeflateOptions` in
+effect at that time.
+
 `callback` will be added as a listener for the `'listening'` event on the HTTP
 server when the `port` option is set.
 
